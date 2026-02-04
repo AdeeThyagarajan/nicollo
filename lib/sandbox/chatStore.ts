@@ -1,55 +1,51 @@
-import "server-only";
+// lib/sandbox/chatStore.ts
 import fs from "fs";
 import path from "path";
-import { projectRoot } from "@/lib/sandbox/paths";
+import { getSandboxRoot } from "./fs";
 
-export type ChatTurn = { role: "user" | "assistant"; content: string; at?: string };
+type ChatTurn = {
+  role: "user" | "assistant";
+  content: string;
+  imageUrl?: string;
+  imageDataUrl?: string;
+  createdAt?: string;
+};
 
-function chatFile(projectId: string) {
-  return path.join(projectRoot(projectId), "chat.json");
+function ensureDir(p: string) {
+  fs.mkdirSync(p, { recursive: true });
 }
 
-// Read chat history for a project. Keep it short so prompts stay stable.
-export function readChat(projectId: string, limit = 24): Array<{ role: string; content: string }> {
-  try {
-    const fp = chatFile(projectId);
-    if (!fs.existsSync(fp)) return [];
-    const raw = fs.readFileSync(fp, "utf8");
-    const parsed = JSON.parse(raw) as ChatTurn[];
-    if (!Array.isArray(parsed)) return [];
-    const clipped = parsed.slice(-limit).map((t) => ({
-      role: t.role,
-      content: String(t.content || "").slice(0, 2000),
-    }));
-    return clipped;
-  } catch {
-    return [];
-  }
+function chatPath(projectId: string) {
+  return path.join(getSandboxRoot(), "projects", projectId, "chat.jsonl");
 }
 
 export function appendChat(projectId: string, turn: ChatTurn) {
-  try {
-    const fp = chatFile(projectId);
-    fs.mkdirSync(path.dirname(fp), { recursive: true });
+  const p = chatPath(projectId);
+  ensureDir(path.dirname(p));
 
-    const existing: ChatTurn[] = (() => {
-      try {
-        if (!fs.existsSync(fp)) return [];
-        const raw = fs.readFileSync(fp, "utf8");
-        const j = JSON.parse(raw);
-        return Array.isArray(j) ? (j as ChatTurn[]) : [];
-      } catch {
-        return [];
-      }
-    })();
+  const row = {
+    ...turn,
+    createdAt: turn.createdAt || new Date().toISOString(),
+  };
 
-    existing.push({ ...turn, at: new Date().toISOString() });
+  fs.appendFileSync(p, JSON.stringify(row) + "\n", "utf8");
+}
 
-    // Hard cap
-    const capped = existing.slice(-80);
+export function readChat(projectId: string, limit = 120): ChatTurn[] {
+  const p = chatPath(projectId);
+  if (!fs.existsSync(p)) return [];
 
-    fs.writeFileSync(fp, JSON.stringify(capped, null, 2), "utf8");
-  } catch {
-    // ignore
+  const raw = fs.readFileSync(p, "utf8");
+  const lines = raw.split("\n").filter(Boolean);
+
+  const parsed: ChatTurn[] = [];
+  for (const line of lines) {
+    try {
+      parsed.push(JSON.parse(line));
+    } catch {
+      // ignore bad lines
+    }
   }
+
+  return parsed.slice(Math.max(0, parsed.length - limit));
 }
