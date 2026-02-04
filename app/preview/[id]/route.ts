@@ -9,23 +9,6 @@ import { readMeta, writeMeta } from "@/lib/sandbox/meta";
 
 export const runtime = "nodejs";
 
-/* ------------------------------------------------------------------ */
-/* Types                                                               */
-/* ------------------------------------------------------------------ */
-
-type PreviewMeta = {
-  nextPort?: number;
-  nextStartedAt?: number;
-  [key: string]: unknown;
-};
-
-type ProjectMeta = {
-  preview?: PreviewMeta;
-  [key: string]: unknown;
-};
-
-/* ------------------------------------------------------------------ */
-
 const processes = new Map<string, any>();
 
 async function getFreePort(): Promise<number> {
@@ -56,6 +39,7 @@ async function waitForPort(port: number, timeoutMs = 8000) {
       s.on("error", () => resolve(false));
       s.setTimeout(800, () => resolve(false));
     });
+
     if (ok) return true;
     await new Promise((r) => setTimeout(r, 150));
   }
@@ -69,14 +53,10 @@ function killProcessTree(pid: number) {
     try {
       process.kill(pid);
     } catch {
-      /* ignore */
+      // ignore
     }
   }
 }
-
-/* ------------------------------------------------------------------ */
-/* GET                                                                 */
-/* ------------------------------------------------------------------ */
 
 export async function GET(
   req: Request,
@@ -84,6 +64,7 @@ export async function GET(
 ) {
   const projectId = params.id;
 
+  // Ensure project exists
   const root = path.join(
     process.cwd(),
     "sandbox",
@@ -96,24 +77,22 @@ export async function GET(
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
-  const existing = (readMeta(projectId) ?? {}) as ProjectMeta;
+  // Reuse existing preview process if it exists and is alive
+  const existing = readMeta(projectId);
   const running = processes.get(projectId);
 
-  // If already running, redirect immediately
   if (running && !running.killed) {
     const url = new URL(req.url);
-    return NextResponse.redirect(
-      new URL(`/preview/${projectId}/next`, url),
-      307
-    );
+    return NextResponse.redirect(new URL(`/preview/${projectId}/next`, url), 307);
   }
 
-  // Cleanup dead process
+  // If we had a previous process recorded but it's dead, clean it up
   if (running?.pid) {
     killProcessTree(running.pid);
     processes.delete(projectId);
   }
 
+  // Start a new Next server instance on a free port
   const port = await getFreePort();
 
   const child = spawn("npm", ["run", "dev", "--", "-p", String(port)], {
@@ -125,14 +104,16 @@ export async function GET(
 
   processes.set(projectId, child);
 
+  // ✅ IMPORTANT: avoid "meta is {}" typing issues by only writing the fields we need
   writeMeta(projectId, {
     preview: {
-      ...(existing.preview ?? {}),
+      ...(existing?.preview ?? {}),
       nextPort: port,
       nextStartedAt: Date.now(),
     },
-  } satisfies ProjectMeta);
+  } as any);
 
+  // Give the server a moment to start so the first iframe load doesn't race.
   await waitForPort(port);
 
   const url = new URL(req.url);
@@ -141,10 +122,7 @@ export async function GET(
     307
   );
 
-  res.cookies.set("da_preview", projectId, {
-    path: "/",
-    sameSite: "lax",
-  });
-
+  // Used by middleware to route /_next/* and /api/* to the correct preview.
+  res.cookies.set("da_preview", projectId, { path: "/", sameSite: "lax" });
   return res;
 }
