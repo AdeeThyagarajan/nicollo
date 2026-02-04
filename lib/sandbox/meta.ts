@@ -9,6 +9,9 @@ export type ProjectMeta = {
   title?: string;
   entry?: string;
   files?: string[];
+
+  // ✅ build state
+  initialized?: boolean; // <-- ADD THIS
   version?: number;
   built?: boolean;
 
