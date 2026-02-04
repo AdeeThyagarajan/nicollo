@@ -33,3 +33,12 @@
   cursor: not-allowed;
   pointer-events: none;
 }
+.primary {
+  /* default look: keep as-is if your base .button already styles primary */
+}
+
+.danger {
+  border-color: rgba(255, 80, 80, 0.45);
+  box-shadow: 0 0 0 1px rgba(255, 80, 80, 0.18),
+    0 0 22px rgba(255, 80, 80, 0.18);
+}
