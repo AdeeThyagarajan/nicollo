@@ -24,8 +24,9 @@ function projectDir(projectId: string) {
 }
 
 function generateProjectId() {
-  // stable + filesystem safe
-  return `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  return `p_${Date.now().toString(36)}_${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
 }
 
 export function listProjects(): ProjectSummary[] {
@@ -61,7 +62,6 @@ export function getProjectMeta(projectId: string): ProjectMeta {
   const meta = readMeta(projectId);
   if (meta) return meta;
 
-  // Create a minimal meta if missing — must match ProjectMeta exactly
   const fresh: ProjectMeta = {
     id: String(projectId),
     title: `Project ${projectId}`,
@@ -76,10 +76,13 @@ export function getProjectMeta(projectId: string): ProjectMeta {
 }
 
 /**
- * Export used by /app/api/projects/route.ts
- * Creates a new project directory + meta.
+ * Used by /app/api/projects/route.ts
  */
-export function createProject(input?: { title?: string; id?: string }) {
+export function createProject(input?: {
+  title?: string;
+  description?: string; // accepted (ignored for now)
+  id?: string;
+}) {
   ensureDirs();
 
   const id = (input?.id && String(input.id).trim()) || generateProjectId();
@@ -108,10 +111,6 @@ export function createProject(input?: { title?: string; id?: string }) {
   return getProject(id);
 }
 
-/**
- * Export used by /app/api/projects/[id]/route.ts
- * Returns a stable project payload (meta + convenience fields).
- */
 export function getProject(projectId: string) {
   const meta = getProjectMeta(projectId);
 
@@ -124,10 +123,6 @@ export function getProject(projectId: string) {
   };
 }
 
-/**
- * Export used by /app/api/projects/[id]/route.ts
- * Renames a project directory and updates meta.id + meta.title.
- */
 export function renameProject(projectId: string, nextId: string) {
   ensureDirs();
 
@@ -153,7 +148,6 @@ export function renameProject(projectId: string, nextId: string) {
 
   fs.renameSync(fromPath, toPath);
 
-  // Update meta under the new id
   const meta = (readMeta(toId) ?? { id: toId }) as ProjectMeta;
 
   writeMeta(toId, {
@@ -166,10 +160,6 @@ export function renameProject(projectId: string, nextId: string) {
   return getProject(toId);
 }
 
-/**
- * Export used by /app/api/projects/[id]/route.ts
- * Deletes a project directory recursively.
- */
 export function deleteProject(projectId: string) {
   ensureDirs();
 
