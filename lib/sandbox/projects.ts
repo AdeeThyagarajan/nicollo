@@ -19,6 +19,10 @@ function isDir(p: string) {
   }
 }
 
+function projectDir(projectId: string) {
+  return path.join(projectsRoot, String(projectId));
+}
+
 export function listProjects(): ProjectSummary[] {
   ensureDirs();
 
@@ -30,7 +34,6 @@ export function listProjects(): ProjectSummary[] {
 
   const summaries: ProjectSummary[] = ids.map((id) => {
     const meta = readMeta(id);
-
     return {
       id,
       title: (meta?.title && String(meta.title)) || `Project ${id}`,
@@ -65,4 +68,81 @@ export function getProjectMeta(projectId: string): ProjectMeta {
 
   writeMeta(projectId, fresh);
   return fresh;
+}
+
+/**
+ * Export used by /app/api/projects/[id]/route.ts
+ * Returns a stable project payload (meta + a couple of convenience fields).
+ */
+export function getProject(projectId: string) {
+  const meta = getProjectMeta(projectId);
+
+  return {
+    id: meta.id,
+    title: meta.title ?? `Project ${meta.id}`,
+    updatedAt: meta.updatedAt,
+    built: Boolean(meta.built),
+    meta,
+  };
+}
+
+/**
+ * Export used by /app/api/projects/[id]/route.ts
+ * Renames a project directory and updates meta.id + meta.title.
+ */
+export function renameProject(projectId: string, nextId: string) {
+  ensureDirs();
+
+  const fromId = String(projectId).trim();
+  const toId = String(nextId).trim();
+
+  if (!fromId || !toId) {
+    throw new Error("Invalid project id");
+  }
+  if (fromId === toId) {
+    return getProject(toId);
+  }
+
+  const fromPath = projectDir(fromId);
+  const toPath = projectDir(toId);
+
+  if (!fs.existsSync(fromPath) || !isDir(fromPath)) {
+    throw new Error("Project not found");
+  }
+  if (fs.existsSync(toPath)) {
+    throw new Error("A project with that id already exists");
+  }
+
+  fs.renameSync(fromPath, toPath);
+
+  // Update meta under the new id
+  const meta = (readMeta(toId) ?? { id: toId }) as ProjectMeta;
+
+  writeMeta(toId, {
+    ...meta,
+    id: toId,
+    title: meta.title ?? `Project ${toId}`,
+    updatedAt: new Date().toISOString(),
+  });
+
+  return getProject(toId);
+}
+
+/**
+ * Export used by /app/api/projects/[id]/route.ts
+ * Deletes a project directory recursively.
+ */
+export function deleteProject(projectId: string) {
+  ensureDirs();
+
+  const id = String(projectId).trim();
+  const dir = projectDir(id);
+
+  if (!fs.existsSync(dir) || !isDir(dir)) {
+    throw new Error("Project not found");
+  }
+
+  fs.rmSync(dir, { recursive: true, force: true });
+
+  return { ok: true, id };
 }
