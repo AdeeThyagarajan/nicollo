@@ -1,4 +1,4 @@
-// devassist/app/preview/[id]/route.ts
+// app/preview/[id]/route.ts
 import { NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
@@ -8,6 +8,23 @@ import net from "net";
 import { readMeta, writeMeta } from "@/lib/sandbox/meta";
 
 export const runtime = "nodejs";
+
+/* ------------------------------------------------------------------ */
+/* Types                                                               */
+/* ------------------------------------------------------------------ */
+
+type PreviewMeta = {
+  nextPort?: number;
+  nextStartedAt?: number;
+  [key: string]: unknown;
+};
+
+type ProjectMeta = {
+  preview?: PreviewMeta;
+  [key: string]: unknown;
+};
+
+/* ------------------------------------------------------------------ */
 
 const processes = new Map<string, any>();
 
@@ -37,16 +54,29 @@ async function waitForPort(port: number, timeoutMs = 8000) {
         resolve(true);
       });
       s.on("error", () => resolve(false));
-      s.setTimeout(800, () => {
-        try { s.destroy(); } catch {}
-        resolve(false);
-      });
+      s.setTimeout(800, () => resolve(false));
     });
-    if (ok) return;
-    await new Promise((r) => setTimeout(r, 200));
+    if (ok) return true;
+    await new Promise((r) => setTimeout(r, 150));
   }
-  // Don't throw hard — we'll still redirect and let the proxy return a helpful error.
+  return false;
 }
+
+function killProcessTree(pid: number) {
+  try {
+    process.kill(-pid);
+  } catch {
+    try {
+      process.kill(pid);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* GET                                                                 */
+/* ------------------------------------------------------------------ */
 
 export async function GET(
   req: Request,
@@ -54,26 +84,40 @@ export async function GET(
 ) {
   const projectId = params.id;
 
-  // If already started, just go straight to the proxied app.
-  const existing = readMeta(projectId);
-  if (existing?.preview?.nextPort) {
+  const root = path.join(
+    process.cwd(),
+    "sandbox",
+    "projects",
+    projectId,
+    "current"
+  );
+
+  if (!fs.existsSync(root)) {
+    return NextResponse.json({ error: "Project not found" }, { status: 404 });
+  }
+
+  const existing = (readMeta(projectId) ?? {}) as ProjectMeta;
+  const running = processes.get(projectId);
+
+  // If already running, redirect immediately
+  if (running && !running.killed) {
     const url = new URL(req.url);
-    const res = NextResponse.redirect(new URL(`/preview/${projectId}/next`, url), 307);
-  res.cookies.set("da_preview", projectId, { path: "/", sameSite: "lax" });
-  return res;
-}
+    return NextResponse.redirect(
+      new URL(`/preview/${projectId}/next`, url),
+      307
+    );
+  }
 
-  const meta = existing || {};
-
-  // Ensure sandbox dir exists (some projects may not have been initialized yet)
-  const projectDir = path.join(process.cwd(), "sandbox", "projects", projectId, "current");
-  if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
+  // Cleanup dead process
+  if (running?.pid) {
+    killProcessTree(running.pid);
+    processes.delete(projectId);
+  }
 
   const port = await getFreePort();
 
-  // Start next dev server (one per project)
   const child = spawn("npm", ["run", "dev", "--", "-p", String(port)], {
-    cwd: projectDir,
+    cwd: root,
     env: { ...process.env, PORT: String(port) },
     stdio: "ignore",
     detached: true,
@@ -82,19 +126,25 @@ export async function GET(
   processes.set(projectId, child);
 
   writeMeta(projectId, {
-    ...meta,
     preview: {
-      ...(meta.preview || {}),
+      ...(existing.preview ?? {}),
       nextPort: port,
       nextStartedAt: Date.now(),
     },
-  });
+  } satisfies ProjectMeta);
 
-  // Give the server a moment to start so the first iframe load doesn't race.
   await waitForPort(port);
 
   const url = new URL(req.url);
-  const res = NextResponse.redirect(new URL(`/preview/${projectId}/next`, url), 307);
-  res.cookies.set("da_preview", projectId, { path: "/", sameSite: "lax" });
+  const res = NextResponse.redirect(
+    new URL(`/preview/${projectId}/next`, url),
+    307
+  );
+
+  res.cookies.set("da_preview", projectId, {
+    path: "/",
+    sameSite: "lax",
+  });
+
   return res;
 }
