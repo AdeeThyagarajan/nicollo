@@ -1,32 +1,31 @@
-import path from "path";
+// lib/sandbox/paths.ts
 import fs from "fs";
+import path from "path";
 
+/**
+ * Vercel/serverless file writes must go to /tmp (writable).
+ * Local dev can also use /tmp, but keeping it deterministic helps.
+ */
+const BASE = "/tmp";
+
+export const sandboxRoot = path.join(BASE, "sandbox");
+export const projectsRoot = path.join(sandboxRoot, "projects");
+
+/**
+ * Ensure base folders exist.
+ * Accepts optional projectId for backward compatibility with older callers.
+ */
+export function ensureDirs(_projectId?: string) {
+  fs.mkdirSync(projectsRoot, { recursive: true });
+}
+
+/** Absolute path to a project folder */
 export function projectRoot(projectId: string) {
-  return path.join(process.cwd(), "sandbox", "projects", projectId);
-}
-export function currentDir(projectId: string) {
-  return path.join(projectRoot(projectId), "current");
-}
-export function versionsDir(projectId: string) {
-  return path.join(projectRoot(projectId), "versions");
-}
-export function stagingDir(projectId: string) {
-  return path.join(projectRoot(projectId), "staging");
+  return path.join(projectsRoot, String(projectId));
 }
 
-export function templateDir(projectId: string) {
-  return path.join(projectRoot(projectId), "template");
-}
-
-export function ensureDirs(projectId: string) {
-  const root = projectRoot(projectId);
-  const cur = currentDir(projectId);
-  const vers = versionsDir(projectId);
-  const staging = stagingDir(projectId);
-  const tmpl = templateDir(projectId);
-  if (!fs.existsSync(root)) fs.mkdirSync(root, { recursive: true });
-  if (!fs.existsSync(cur)) fs.mkdirSync(cur, { recursive: true });
-  if (!fs.existsSync(tmpl)) fs.mkdirSync(tmpl, { recursive: true });
-  if (!fs.existsSync(vers)) fs.mkdirSync(vers, { recursive: true });
-  if (!fs.existsSync(staging)) fs.mkdirSync(staging, { recursive: true });
+/** Ensure a given project's folder exists */
+export function ensureProjectDir(projectId: string) {
+  ensureDirs();
+  fs.mkdirSync(projectRoot(projectId), { recursive: true });
 }
