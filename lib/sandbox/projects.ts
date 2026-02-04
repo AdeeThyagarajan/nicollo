@@ -1,7 +1,7 @@
 // lib/sandbox/projects.ts
 import fs from "fs";
 import path from "path";
-import { ensureDirs, projectsRoot } from "@/lib/sandbox/paths";
+import { ensureDirs, projectRoot } from "@/lib/sandbox/paths";
 import { readMeta, writeMeta, type ProjectMeta } from "@/lib/sandbox/meta";
 
 export type ProjectSummary = {
@@ -18,6 +18,9 @@ function isDir(p: string) {
     return false;
   }
 }
+
+// derive the parent "/tmp/sandbox/projects" without relying on a projectsRoot export
+const projectsRoot = path.dirname(projectRoot("__root__"));
 
 function projectDir(projectId: string) {
   return path.join(projectsRoot, String(projectId));
@@ -48,7 +51,6 @@ export function listProjects(): ProjectSummary[] {
     };
   });
 
-  // newest first
   summaries.sort((a, b) => {
     const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
     const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -75,12 +77,9 @@ export function getProjectMeta(projectId: string): ProjectMeta {
   return fresh;
 }
 
-/**
- * Used by /app/api/projects/route.ts
- */
 export function createProject(input?: {
   title?: string;
-  description?: string; // accepted (ignored for now)
+  description?: string;
   id?: string;
 }) {
   ensureDirs();
@@ -129,22 +128,14 @@ export function renameProject(projectId: string, nextId: string) {
   const fromId = String(projectId).trim();
   const toId = String(nextId).trim();
 
-  if (!fromId || !toId) {
-    throw new Error("Invalid project id");
-  }
-  if (fromId === toId) {
-    return getProject(toId);
-  }
+  if (!fromId || !toId) throw new Error("Invalid project id");
+  if (fromId === toId) return getProject(toId);
 
   const fromPath = projectDir(fromId);
   const toPath = projectDir(toId);
 
-  if (!fs.existsSync(fromPath) || !isDir(fromPath)) {
-    throw new Error("Project not found");
-  }
-  if (fs.existsSync(toPath)) {
-    throw new Error("A project with that id already exists");
-  }
+  if (!fs.existsSync(fromPath) || !isDir(fromPath)) throw new Error("Project not found");
+  if (fs.existsSync(toPath)) throw new Error("A project with that id already exists");
 
   fs.renameSync(fromPath, toPath);
 
