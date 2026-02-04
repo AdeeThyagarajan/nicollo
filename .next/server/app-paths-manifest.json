@@ -1,0 +1,14 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/projects/[id]/workspace/page": "app/projects/[id]/workspace/page.js",
+  "/api/project/[id]/chat/route": "app/api/project/[id]/chat/route.js",
+  "/api/projects/[id]/route": "app/api/projects/[id]/route.js",
+  "/api/project/[id]/files/route": "app/api/project/[id]/files/route.js",
+  "/api/project/[id]/summary/route": "app/api/project/[id]/summary/route.js",
+  "/api/project/[id]/preview/status/route": "app/api/project/[id]/preview/status/route.js",
+  "/preview/[id]/route": "app/preview/[id]/route.js",
+  "/preview/[id]/next/[[...path]]/route": "app/preview/[id]/next/[[...path]]/route.js",
+  "/page": "app/page.js",
+  "/projects/page": "app/projects/page.js",
+  "/api/projects/route": "app/api/projects/route.js"
+}
