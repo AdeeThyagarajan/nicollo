@@ -15,17 +15,22 @@ export default function TopNav({
     <div className={styles.nav}>
       <div className={styles.left}>
         <div className={styles.logoMark} />
-        <div className={styles.logoText}>Devassist</div>
+        <div className={styles.logoText}>Nicollo</div>
 
-        {showTitle ? <div className={styles.sep} /> : null}
-        {showTitle ? <div className={styles.pageTitle}>{title}</div> : null}
-        {showStatus ? (
-          <StatusPill className={styles.status} label={status!} />
-        ) : null}
+        {showTitle && (
+          <div className={styles.titleWrap}>
+            <div className={styles.title}>{title}</div>
+            {showStatus && (
+              <div className={styles.status}>
+                <StatusPill label={status!} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className={styles.right}>
-        <div className={styles.planet} />
+        <div className={styles.orb} />
       </div>
     </div>
   );
