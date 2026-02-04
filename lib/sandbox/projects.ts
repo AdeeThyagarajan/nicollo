@@ -23,6 +23,11 @@ function projectDir(projectId: string) {
   return path.join(projectsRoot, String(projectId));
 }
 
+function generateProjectId() {
+  // stable + filesystem safe
+  return `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export function listProjects(): ProjectSummary[] {
   ensureDirs();
 
@@ -71,8 +76,41 @@ export function getProjectMeta(projectId: string): ProjectMeta {
 }
 
 /**
+ * Export used by /app/api/projects/route.ts
+ * Creates a new project directory + meta.
+ */
+export function createProject(input?: { title?: string; id?: string }) {
+  ensureDirs();
+
+  const id = (input?.id && String(input.id).trim()) || generateProjectId();
+  const dir = projectDir(id);
+
+  if (fs.existsSync(dir)) {
+    throw new Error("A project with that id already exists");
+  }
+
+  fs.mkdirSync(dir, { recursive: true });
+
+  const now = new Date().toISOString();
+
+  const meta: ProjectMeta = {
+    id,
+    title: (input?.title && String(input.title)) || `Project ${id}`,
+    updatedAt: now,
+    files: [],
+    version: 0,
+    built: false,
+    initialized: true,
+  };
+
+  writeMeta(id, meta);
+
+  return getProject(id);
+}
+
+/**
  * Export used by /app/api/projects/[id]/route.ts
- * Returns a stable project payload (meta + a couple of convenience fields).
+ * Returns a stable project payload (meta + convenience fields).
  */
 export function getProject(projectId: string) {
   const meta = getProjectMeta(projectId);
