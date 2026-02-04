@@ -10,18 +10,6 @@ import { readMeta, writeMeta } from "@/lib/sandbox/meta";
 
 export const runtime = "nodejs";
 
-const apiKey = process.env.OPENAI_API_KEY;
-if (!apiKey) {
-  return new Response(
-    JSON.stringify({
-      ok: false,
-      error: "OPENAI_API_KEY is not set on the server.",
-    }),
-    { status: 503, headers: { "content-type": "application/json" } }
-  );
-}
-
-
 type SandboxFile = { path: string; content: string };
 
 function uid() {
@@ -38,10 +26,14 @@ function sanitizeAssistantMessage(msg: any, fallback: string) {
 
   const hasFence = t.includes("```");
   const hasFileHeader = /^---\s+.+\s+---/m.test(t);
-  const codeyLines = (t.match(/^\s*(import\s+|export\s+|const\s+|function\s+|class\s+|<\w+|{\s*$)/gm) || [])
-    .length;
+  const codeyLines = (
+    t.match(
+      /^\s*(import\s+|export\s+|const\s+|function\s+|class\s+|<\w+|{\s*$)/gm
+    ) || []
+  ).length;
 
-  if (hasFence || hasFileHeader || codeyLines >= 3 || t.length > 900) return fallback;
+  if (hasFence || hasFileHeader || codeyLines >= 3 || t.length > 900)
+    return fallback;
 
   const withoutFences = t.replace(/```[\s\S]*?```/g, "").trim();
   return withoutFences || fallback;
@@ -153,28 +145,38 @@ function isBuildRequest(text: string) {
   }
 
   // "Builder-ish" phrasing that users commonly use.
-  if (t.includes("create a") || t.includes("add a") || t.includes("make this") || t.includes("app that")) {
+  if (
+    t.includes("create a") ||
+    t.includes("add a") ||
+    t.includes("make this") ||
+    t.includes("app that")
+  ) {
     return true;
   }
 
   // If the user is clearly describing an app spec (platform/framework + requirements),
   // treat it as a build request even if they didn't say "build".
-  // This fixes cases like: "It is an app for both android and iOS. use openweathermap..."
   const mentionsPlatformOrStack =
     /\b(it is|it's)\s+(an?\s+)?app\b/.test(t) ||
-    /\b(ios|android|iphone|ipad|react\s*native|expo|next\.?js|web app|saas)\b/.test(t);
+    /\b(ios|android|iphone|ipad|react\s*native|expo|next\.?js|web app|saas)\b/.test(
+      t
+    );
 
-  const requirementHits = (t.match(/\b(use|support|include|should|must|need|with|add)\b/g) || []).length;
-  const hasFileOrCodeSignals = /\b(readme|package\.json|app\.js|index\.html|src\/|\.env|endpoint|api key)\b/.test(t);
+  const requirementHits = (t.match(/\b(use|support|include|should|must|need|with|add)\b/g) || [])
+    .length;
+  const hasFileOrCodeSignals =
+    /\b(readme|package\.json|app\.js|index\.html|src\/|\.env|endpoint|api key)\b/.test(
+      t
+    );
 
-  if ((mentionsPlatformOrStack && requirementHits >= 2) || hasFileOrCodeSignals) return true;
+  if ((mentionsPlatformOrStack && requirementHits >= 2) || hasFileOrCodeSignals)
+    return true;
 
   return false;
 }
 
 /**
  * Keep any file that has a path; allow empty content too (still creates a file).
- * This prevents "no files written" when the model returns an empty string for some files.
  */
 function normalizeFiles(files: any): SandboxFile[] {
   if (!Array.isArray(files)) return [];
@@ -199,13 +201,12 @@ function normalizeFiles(files: any): SandboxFile[] {
 
 /**
  * Hard guarantee: if the model returns no files, we still create a real scaffold.
- * This prevents the “toy/dummy” feel and guarantees the project folder is never empty.
  */
 function fallbackScaffold(userPrompt: string): SandboxFile[] {
   return [
     {
       path: "README.md",
-      content: `# Devassist Project
+      content: `# Nicollo Project
 
 ## Goal
 ${userPrompt}
@@ -230,7 +231,6 @@ Use the included proxy (\`server/proxy.js\`) and keep the key in \`.env\`.
 3) Serve frontend locally:
    - python -m http.server 5173
    - open http://localhost:5173
-
 `,
     },
     {
@@ -246,11 +246,6 @@ PORT=8787
       content: `/**
  * Minimal Node proxy for Google Places Web Service (avoids CORS + hides API key).
  * Run: node server/proxy.js
- * Frontend calls: http://localhost:8787/api/places/nearby?... and /api/places/details?placeId=...
- *
- * NOTE:
- * - Requires Node 18+ (global fetch)
- * - This is intentionally minimal; add rate limiting + caching for production.
  */
 import http from "http";
 import { URL } from "url";
@@ -297,7 +292,6 @@ const server = http.createServer(async (req, res) => {
     if (!lat || !lng) return sendJson(res, 400, { error: "lat,lng required" });
 
     const upstream = new URL("https://maps.googleapis.com/maps/api/place/nearbysearch/json");
-    // ✅ FIX: escape template vars inside THIS TypeScript template string
     upstream.searchParams.set("location", lat + "," + lng);
     upstream.searchParams.set("radius", radius);
     upstream.searchParams.set("keyword", keyword);
@@ -307,7 +301,7 @@ const server = http.createServer(async (req, res) => {
       const r = await fetch(upstream.toString());
       const j = await r.json();
       return sendJson(res, 200, j);
-    } catch (e) {
+    } catch {
       return sendJson(res, 500, { error: "upstream fetch failed" });
     }
   }
@@ -318,14 +312,17 @@ const server = http.createServer(async (req, res) => {
 
     const upstream = new URL("https://maps.googleapis.com/maps/api/place/details/json");
     upstream.searchParams.set("place_id", placeId);
-    upstream.searchParams.set("fields", "name,formatted_address,rating,opening_hours,website,formatted_phone_number,photos");
+    upstream.searchParams.set(
+      "fields",
+      "name,formatted_address,rating,opening_hours,website,formatted_phone_number,photos"
+    );
     upstream.searchParams.set("key", API_KEY);
 
     try {
       const r = await fetch(upstream.toString());
       const j = await r.json();
       return sendJson(res, 200, j);
-    } catch (e) {
+    } catch {
       return sendJson(res, 500, { error: "upstream fetch failed" });
     }
   }
@@ -341,7 +338,19 @@ server.listen(PORT, () => {
   ];
 }
 
-async function summarizeForMemory(history: Array<{ role: string; content: string }>) {
+/** ✅ OpenAI helpers (NO top-level return statements) */
+function getApiKey() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  return typeof apiKey === "string" && apiKey.trim() ? apiKey.trim() : "";
+}
+function makeOpenAI(apiKey: string) {
+  return new OpenAI({ apiKey });
+}
+
+async function summarizeForMemory(
+  openai: OpenAI,
+  history: Array<{ role: string; content: string }>
+) {
   try {
     const trimmed = history.slice(-40);
     const completion = await openai.chat.completions.create({
@@ -357,7 +366,9 @@ async function summarizeForMemory(history: Array<{ role: string; content: string
         },
         {
           role: "user",
-          content: trimmed.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n"),
+          content: trimmed
+            .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
+            .join("\n"),
         },
       ],
     });
@@ -367,10 +378,10 @@ async function summarizeForMemory(history: Array<{ role: string; content: string
   }
 }
 
-async function updateRollingMemory(projectId: string) {
+async function updateRollingMemory(openai: OpenAI, projectId: string) {
   const meta = readMeta(projectId) || { id: projectId };
   const history = readChat(projectId, 120);
-  const memory = await summarizeForMemory(history);
+  const memory = await summarizeForMemory(openai, history);
 
   try {
     if (memory) {
@@ -410,15 +421,10 @@ function saveGeneratedImageToMeta(
   writeMeta(projectId, next as any);
 }
 
-export async function GET(
-  _req: Request,
-  { params }: { params: { id: string } }
-) {
+export async function GET(_req: Request, { params }: { params: { id: string } }) {
   try {
     const projectId = params.id;
 
-    // Return the most recent turns for hydration on reload.
-    // chatStore items are expected to be: { role, content, imageUrl?, imageDataUrl? }
     const turns = readChat(projectId, 200).map((t: any) => ({
       role: t.role,
       content: t.content,
@@ -438,25 +444,19 @@ export async function GET(
   }
 }
 
-export async function POST(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
     const body = await req.json();
     const message =
       typeof body.message === "string" ? body.message : body.message?.text;
 
     if (!message || typeof message !== "string") {
-      return NextResponse.json({
-        ok: false,
-        error: "Invalid message payload",
-      });
+      return NextResponse.json({ ok: false, error: "Invalid message payload" });
     }
 
     const projectId = params.id;
 
-    // Persist user message (this matches your working chatStore shape)
+    // Persist user message
     appendChat(projectId, { role: "user", content: message });
 
     // ---- PLATFORM INFERENCE + BUILD INFO (one question max) ----
@@ -465,9 +465,8 @@ export async function POST(
 
     if (!(metaAtStart as any).buildInfo) {
       if (pendingPrompt) {
-        // They are answering the one clarification question
         const p = parsePlatformAnswer(message);
-        const resolved = p ?? "web"; // ask once; default to web if still unclear
+        const resolved = p ?? "web";
         const d = buildInfoDefaults(resolved);
 
         const appName =
@@ -490,10 +489,7 @@ export async function POST(
         if (!inferred) {
           const question =
             "Is this a web app, an iPhone app, an Android app, or both iPhone and Android?";
-          writeMeta(
-            projectId,
-            { ...metaAtStart, pendingPlatformPrompt: message } as any
-          );
+          writeMeta(projectId, { ...metaAtStart, pendingPlatformPrompt: message } as any);
           appendChat(projectId, { role: "assistant", content: question });
           return NextResponse.json({ ok: true, type: "text", reply: question });
         }
@@ -506,22 +502,29 @@ export async function POST(
 
         writeMeta(projectId, {
           ...metaAtStart,
-          buildInfo: {
-            ...d,
-            appName,
-            oneLiner,
-            coreFeatures: [],
-          },
+          buildInfo: { ...d, appName, oneLiner, coreFeatures: [] },
         } as any);
       }
     }
 
+    // ✅ Only create OpenAI client when we actually need it (image/build/chat/memory)
+    const apiKey = getApiKey();
+    const needsOpenAI = isImageRequest(message) || isBuildRequest(message) || true; // chat mode always uses OpenAI
+    const openai = needsOpenAI && apiKey ? makeOpenAI(apiKey) : null;
+
+    if (!openai) {
+      // IMPORTANT: no top-level returns; this is inside POST
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "OPENAI_API_KEY is not set on the server.",
+        }),
+        { status: 503, headers: { "content-type": "application/json" } }
+      );
+    }
+
     /**
      * IMAGE MODE (FIXED)
-     * - No unsupported params (no response_format)
-     * - Returns url OR dataUrl
-     * - DOES NOT store huge data URLs in chat history (prevents the UI printing base64 blobs)
-     * - Stores images in meta.images / meta.lastImage instead
      */
     if (isImageRequest(message)) {
       try {
@@ -546,7 +549,6 @@ Constraints:
         const first = (image as any)?.data?.[0];
         const imageUrl = first?.url ? String(first.url) : "";
         const b64 = first?.b64_json ? String(first.b64_json) : "";
-
         const imageDataUrl = b64 ? `data:image/png;base64,${b64}` : "";
 
         if (!imageUrl && !imageDataUrl) {
@@ -555,21 +557,19 @@ Constraints:
           return NextResponse.json({ ok: false, error: errMsg });
         }
 
-        // Save the actual image payload in meta, NOT as a chat bubble string.
         saveGeneratedImageToMeta(projectId, {
           url: imageUrl || undefined,
           dataUrl: imageDataUrl || undefined,
           prompt: message,
         });
 
-        // Chat bubble stays readable (no base64 dump)
         const friendly = "Mockup image generated.";
         appendChat(projectId, { role: "assistant", content: friendly });
 
         return NextResponse.json({
           ok: true,
           type: "image",
-          reply: friendly, // IMPORTANT: keep this human, not the raw URL/base64
+          reply: friendly,
           ...(imageUrl ? { imageUrl } : {}),
           ...(!imageUrl && imageDataUrl ? { imageDataUrl } : {}),
         });
@@ -582,26 +582,16 @@ Constraints:
 
     // BUILD MODE
     if (isBuildRequest(message)) {
-      // keep memory updated so builds stack cleanly
-      const metaBefore = await updateRollingMemory(projectId);
+      const metaBefore = await updateRollingMemory(openai, projectId);
       const memory =
-        typeof (metaBefore as any).memory === "string"
-          ? (metaBefore as any).memory
-          : "";
+        typeof (metaBefore as any).memory === "string" ? (metaBefore as any).memory : "";
 
       const history = readChat(projectId, 80);
+      const context = history.map((m) => ({ role: m.role, text: m.content }));
 
-      // context shape kept as you had it (role + text)
-      const context = history.map((m) => ({
-        role: m.role,
-        text: m.content,
-      }));
-
-      // ✅ Read the current project files from disk and feed them into the builder
-      const existingPaths = listFiles(projectId).slice(0, 200); // cap to avoid huge prompts
+      const existingPaths = listFiles(projectId).slice(0, 200);
       const existingFiles = readFilesSnapshot(projectId, existingPaths, 120_000);
 
-      // Build Info passed into generator (source of truth)
       const metaForBuild = readMeta(projectId) || {};
       const buildInfo = (metaForBuild as any).buildInfo || null;
 
@@ -633,23 +623,15 @@ ${buildInfo ? JSON.stringify(buildInfo, null, 2) : "(not set yet)"}
       }
 
       let files = normalizeFiles(result.files);
+      if (files.length === 0) files = fallbackScaffold(message);
 
-      // HARD GUARANTEE: never write zero files
-      if (files.length === 0) {
-        files = fallbackScaffold(message);
-      }
-
-      // Write files into sandbox (await is critical if writeFiles is async)
       await writeFiles(projectId, files);
 
-      // ✅ Canonical file list from disk (not just this iteration)
       const diskFilePaths = listFiles(projectId);
 
-      // Update meta:
       const meta = readMeta(projectId) || {};
       const bi = (meta as any).buildInfo;
 
-      // Keep a rolling list of core features (iteration, not regeneration)
       const nextFeatures = (() => {
         if (!bi) return null;
         const existing = Array.isArray(bi.coreFeatures)
@@ -669,14 +651,10 @@ ${buildInfo ? JSON.stringify(buildInfo, null, 2) : "(not set yet)"}
         built: true,
         entry: "index.html",
         files: diskFilePaths,
-        version:
-          (typeof (meta as any).version === "number" ? (meta as any).version : 0) +
-          1,
+        version: (typeof (meta as any).version === "number" ? (meta as any).version : 0) + 1,
         lastBuildAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        ...(bi && nextFeatures
-          ? { buildInfo: { ...bi, coreFeatures: nextFeatures } }
-          : {}),
+        ...(bi && nextFeatures ? { buildInfo: { ...bi, coreFeatures: nextFeatures } } : {}),
       } as any);
 
       const assistantMessage = sanitizeAssistantMessage(
@@ -695,15 +673,13 @@ ${buildInfo ? JSON.stringify(buildInfo, null, 2) : "(not set yet)"}
     }
 
     // CHAT MODE
-    const metaNow = await updateRollingMemory(projectId);
+    const metaNow = await updateRollingMemory(openai, projectId);
     const memory =
       typeof (metaNow as any).memory === "string" ? (metaNow as any).memory : "";
     const metaForChat = readMeta(projectId) || {};
     const buildInfoForChat = (metaForChat as any).buildInfo || null;
 
-    // Project awareness: provide the current file tree (paths only) as authoritative grounding.
     const projectFilePaths = listFiles(projectId).slice(0, 400);
-
     const history = readChat(projectId, 80);
 
     const completion = await openai.chat.completions.create({
@@ -713,7 +689,7 @@ ${buildInfo ? JSON.stringify(buildInfo, null, 2) : "(not set yet)"}
         {
           role: "system",
           content:
-            "You are Devassist, the AI builder running inside THIS project. Answer questions using the project's Build Info, memory, and file tree. " +
+            "You are Nicollo, the AI builder running inside THIS project. Answer questions using the project's Build Info, memory, and file tree. " +
             "Do NOT say you are ChatGPT or a general-purpose assistant. Be concise and practical. " +
             "Never change platform/language/framework/app name unless the user explicitly asks.",
         },
@@ -728,18 +704,11 @@ ${buildInfo ? JSON.stringify(buildInfo, null, 2) : "(not set yet)"}
         {
           role: "system",
           content: `Build Info (source of truth; MUST obey):\n${
-            buildInfoForChat
-              ? JSON.stringify(buildInfoForChat, null, 2)
-              : "(not set yet)"
+            buildInfoForChat ? JSON.stringify(buildInfoForChat, null, 2) : "(not set yet)"
           }`,
         },
         ...(memory
-          ? [
-              {
-                role: "system" as const,
-                content: `Project memory (authoritative):\n${memory}`,
-              },
-            ]
+          ? [{ role: "system" as const, content: `Project memory (authoritative):\n${memory}` }]
           : []),
         ...history.map((m) => ({
           role: m.role as "user" | "assistant",
@@ -749,20 +718,12 @@ ${buildInfo ? JSON.stringify(buildInfo, null, 2) : "(not set yet)"}
     });
 
     const reply = completion.choices[0].message.content || "";
-
     appendChat(projectId, { role: "assistant", content: reply });
 
-    return NextResponse.json({
-      ok: true,
-      type: "text",
-      reply,
-    });
+    return NextResponse.json({ ok: true, type: "text", reply });
   } catch (err: any) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: err?.message || "Chat error",
-      },
+      { ok: false, error: err?.message || "Chat error" },
       { status: 200 }
     );
   }
