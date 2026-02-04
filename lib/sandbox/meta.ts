@@ -1,29 +1,45 @@
 // lib/sandbox/meta.ts
 import fs from "fs";
 import path from "path";
-import { getSandboxRoot } from "./fs";
+import { projectRoot } from "@/lib/sandbox/paths";
 
-function ensureDir(p: string) {
-  fs.mkdirSync(p, { recursive: true });
-}
+export type ProjectMeta = {
+  id: string;
+  title?: string;
+  entry?: string;
+  files?: string[];
+  version?: number;
+  built?: boolean;
+  updatedAt?: string;
+  lastBuildAt?: string;
+
+  // optional builder state
+  memory?: string;
+  buildInfo?: any;
+  images?: any[];
+  lastImage?: any;
+
+  // platform inference state
+  pendingPlatformPrompt?: string;
+};
 
 function metaPath(projectId: string) {
-  return path.join(getSandboxRoot(), "projects", projectId, "meta.json");
+  return path.join(projectRoot(projectId), "meta.json");
 }
 
-export function readMeta(projectId: string): any {
-  const p = metaPath(projectId);
-  if (!fs.existsSync(p)) return null;
-
+export function readMeta(projectId: string): ProjectMeta | null {
   try {
-    return JSON.parse(fs.readFileSync(p, "utf8"));
+    const p = metaPath(projectId);
+    if (!fs.existsSync(p)) return null;
+    const raw = fs.readFileSync(p, "utf8");
+    return JSON.parse(raw) as ProjectMeta;
   } catch {
     return null;
   }
 }
 
-export function writeMeta(projectId: string, meta: any) {
+export function writeMeta(projectId: string, meta: ProjectMeta) {
   const p = metaPath(projectId);
-  ensureDir(path.dirname(p));
-  fs.writeFileSync(p, JSON.stringify(meta ?? {}, null, 2), "utf8");
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify(meta, null, 2), "utf8");
 }
