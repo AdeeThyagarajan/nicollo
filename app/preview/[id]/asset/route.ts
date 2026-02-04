@@ -1,132 +1,113 @@
-// devassist/app/preview/[id]/route.ts
+// app/preview/[id]/asset/route.ts
 import { NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
-import { spawn } from "child_process";
-import net from "net";
+import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
 
-import { readMeta, writeMeta } from "@/lib/sandbox/meta";
+import { readMeta, writeMeta, type ProjectMeta } from "@/lib/sandbox/meta";
+import { projectRoot } from "@/lib/sandbox/paths";
 
 export const runtime = "nodejs";
 
-type PreviewMeta = {
-  nextPort?: number;
-  nextStartedAt?: number;
-  [key: string]: unknown;
-};
+// Keep child processes alive across requests in dev/runtime
+declare global {
+  // eslint-disable-next-line no-var
+  var __previewProcesses: Map<string, ChildProcessWithoutNullStreams> | undefined;
+}
+const processes =
+  globalThis.__previewProcesses ?? (globalThis.__previewProcesses = new Map());
 
-type ProjectMeta = {
-  preview?: PreviewMeta;
-  [key: string]: unknown;
-};
+function ensureDir(p: string) {
+  fs.mkdirSync(p, { recursive: true });
+}
 
-const processes = new Map<string, any>();
+function pickFreeishPort() {
+  // good-enough: deterministic per process, avoids collisions most of the time
+  // you can swap to a real port finder later
+  return 3100 + Math.floor(Math.random() * 2000);
+}
 
-async function getFreePort(): Promise<number> {
-  return await new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, () => {
-      const addr = server.address();
-      if (!addr || typeof addr === "string") {
-        server.close(() => reject(new Error("Could not get free port")));
-        return;
-      }
-      const port = addr.port;
-      server.close(() => resolve(port));
-    });
+function writePreviewMeta(projectId: string, patch: ProjectMeta["preview"]) {
+  const existing = (readMeta(projectId) ?? { id: projectId }) as ProjectMeta;
+
+  writeMeta(projectId, {
+    ...existing,
+    id: projectId, // ✅ required
+    preview: {
+      ...(existing.preview ?? {}),
+      ...(patch ?? {}),
+    },
+    updatedAt: new Date().toISOString(),
   });
 }
 
-async function waitForPort(port: number, timeoutMs = 8000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const ok = await new Promise<boolean>((resolve) => {
-      const s = net.createConnection({ port, host: "127.0.0.1" }, () => {
-        s.end();
-        resolve(true);
-      });
-      s.on("error", () => resolve(false));
-      s.setTimeout(800, () => resolve(false));
-    });
-    if (ok) return true;
-    await new Promise((r) => setTimeout(r, 150));
-  }
-  return false;
-}
-
-function killProcessTree(pid: number) {
-  try {
-    process.kill(-pid);
-  } catch {
-    try {
-      process.kill(pid);
-    } catch {
-      // ignore
-    }
-  }
-}
-
 export async function GET(
-  req: Request,
+  _req: Request,
   { params }: { params: { id: string } }
 ) {
   const projectId = params.id;
 
-  // Ensure project exists
-  const root = path.join(
-    process.cwd(),
-    "sandbox",
-    "projects",
-    projectId,
-    "current"
-  );
-  if (!fs.existsSync(root)) {
-    return NextResponse.json({ error: "Project not found" }, { status: 404 });
-  }
+  try {
+    // Ensure project root exists
+    const root = projectRoot(projectId);
+    ensureDir(root);
 
-  // Reuse existing preview process if it exists and is alive
-  const existing = (readMeta(projectId) ?? {}) as ProjectMeta;
-  const running = processes.get(projectId);
+    // If already running, just return the meta preview
+    const existing = (readMeta(projectId) ?? { id: projectId }) as ProjectMeta;
+    if (processes.has(projectId) && existing.preview?.nextPort) {
+      return NextResponse.json({
+        ok: true,
+        nextPort: existing.preview.nextPort,
+        nextStartedAt: existing.preview.nextStartedAt ?? null,
+      });
+    }
 
-  if (running && !running.killed) {
-    const url = new URL(req.url);
-    return NextResponse.redirect(new URL(`/preview/${projectId}/next`, url), 307);
-  }
+    // Start Next dev server inside the project folder
+    const port = pickFreeishPort();
 
-  // If we had a previous process recorded but it's dead, clean it up
-  if (running?.pid) {
-    killProcessTree(running.pid);
-    processes.delete(projectId);
-  }
+    // Some builds expect there to be a package.json. If yours always exists, fine.
+    // This just prevents a crash on empty folders.
+    const pkgPath = path.join(root, "package.json");
+    if (!fs.existsSync(pkgPath)) {
+      fs.writeFileSync(
+        pkgPath,
+        JSON.stringify(
+          { name: `project-${projectId}`, private: true, scripts: { dev: "next dev" } },
+          null,
+          2
+        ),
+        "utf8"
+      );
+    }
 
-  // Start a new Next server instance on a free port
-  const port = await getFreePort();
+    const child = spawn("npm", ["run", "dev", "--", "-p", String(port)], {
+      cwd: root,
+      env: { ...process.env, PORT: String(port) },
+      stdio: "pipe",
+    });
 
-  const child = spawn("npm", ["run", "dev", "--", "-p", String(port)], {
-    cwd: root,
-    env: { ...process.env, PORT: String(port) },
-    stdio: "ignore",
-    detached: true,
-  });
+    processes.set(projectId, child);
 
-  processes.set(projectId, child);
-
-  writeMeta(projectId, {
-    preview: {
-      ...(existing.preview ?? {}),
+    // Write meta immediately so UI has something stable
+    writePreviewMeta(projectId, {
       nextPort: port,
       nextStartedAt: Date.now(),
-    },
-  } satisfies ProjectMeta);
+    });
 
-  // Give the server a moment to start so the first iframe load doesn't race.
-  await waitForPort(port);
+    // Optional: if process exits, clear it
+    child.on("exit", () => {
+      processes.delete(projectId);
+    });
 
-  const url = new URL(req.url);
-  const res = NextResponse.redirect(new URL(`/preview/${projectId}/next`, url), 307);
-  // Used by middleware to route /_next/* and /api/* to the correct preview.
-  res.cookies.set("da_preview", projectId, { path: "/", sameSite: "lax" });
-  return res;
+    return NextResponse.json({
+      ok: true,
+      nextPort: port,
+      nextStartedAt: Date.now(),
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { ok: false, error: err?.message ? String(err.message) : "Preview failed" },
+      { status: 500 }
+    );
+  }
 }
