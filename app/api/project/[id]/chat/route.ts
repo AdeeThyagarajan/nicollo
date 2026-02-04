@@ -10,9 +10,17 @@ import { readMeta, writeMeta } from "@/lib/sandbox/meta";
 
 export const runtime = "nodejs";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+const apiKey = process.env.OPENAI_API_KEY;
+if (!apiKey) {
+  return new Response(
+    JSON.stringify({
+      ok: false,
+      error: "OPENAI_API_KEY is not set on the server.",
+    }),
+    { status: 503, headers: { "content-type": "application/json" } }
+  );
+}
+
 
 type SandboxFile = { path: string; content: string };
 
