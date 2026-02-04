@@ -1,24 +1,26 @@
+import React from "react";
 import styles from "./GlowButton.module.css";
-import clsx from "@/lib/clsx";
+
+type GlowButtonProps = {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  className?: string;
+};
 
 export default function GlowButton({
   children,
-  className,
-  variant = "primary",
   onClick,
-  type = "button",
-}: {
-  children: React.ReactNode;
-  className?: string;
-  variant?: "primary" | "danger";
-  onClick?: React.MouseEventHandler<HTMLButtonElement>;
-  type?: "button" | "submit" | "reset";
-}) {
+  disabled = false,
+  className,
+}: GlowButtonProps) {
   return (
     <button
-      type={type}
-      onClick={onClick}
-      className={clsx(styles.btn, variant === "danger" && styles.danger, className)}
+      className={`${styles.button} ${className ?? ""} ${
+        disabled ? styles.disabled : ""
+      }`}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
     >
       {children}
     </button>
