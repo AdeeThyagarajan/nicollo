@@ -4,7 +4,7 @@ import path from "path";
 
 /**
  * Vercel/serverless file writes must go to /tmp (writable).
- * Local dev can also use /tmp, but keeping it deterministic helps.
+ * Keep deterministic across environments.
  */
 const BASE = "/tmp";
 
@@ -28,4 +28,22 @@ export function projectRoot(projectId: string) {
 export function ensureProjectDir(projectId: string) {
   ensureDirs();
   fs.mkdirSync(projectRoot(projectId), { recursive: true });
+}
+
+/**
+ * V1 sandbox layout folders inside each project:
+ * - template/  seeded once
+ * - current/   live preview content
+ * - versions/  snapshots/archives
+ */
+export function templateDir(projectId: string) {
+  return path.join(projectRoot(projectId), "template");
+}
+
+export function currentDir(projectId: string) {
+  return path.join(projectRoot(projectId), "current");
+}
+
+export function versionsDir(projectId: string) {
+  return path.join(projectRoot(projectId), "versions");
 }
