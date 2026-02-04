@@ -1,7 +1,7 @@
 // lib/sandbox/projects.ts
 import fs from "fs";
 import path from "path";
-import { ensureDirs, projectRoot } from "@/lib/sandbox/paths";
+import { ensureDirs, projectsRoot } from "@/lib/sandbox/paths";
 import { readMeta, writeMeta, type ProjectMeta } from "@/lib/sandbox/meta";
 
 export type ProjectSummary = {
@@ -18,10 +18,6 @@ function isDir(p: string) {
     return false;
   }
 }
-
-// In this codebase, projectRoot(projectId) returns the per-project folder.
-// The parent folder is one level up from any project root.
-const projectsRoot = path.dirname(projectRoot("___root___sentinel___"));
 
 function projectDir(projectId: string) {
   return path.join(projectsRoot, String(projectId));
@@ -52,6 +48,7 @@ export function listProjects(): ProjectSummary[] {
     };
   });
 
+  // newest first
   summaries.sort((a, b) => {
     const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
     const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -78,6 +75,9 @@ export function getProjectMeta(projectId: string): ProjectMeta {
   return fresh;
 }
 
+/**
+ * Used by /app/api/projects/route.ts
+ */
 export function createProject(input?: {
   title?: string;
   description?: string; // accepted (ignored for now)
