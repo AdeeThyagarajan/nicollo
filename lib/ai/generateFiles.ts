@@ -1,8 +1,10 @@
 // lib/ai/generateFiles.ts
 import OpenAI from "openai";
 
+export type GeneratedFile = { path: string; content: string };
+
 export type GenerateFilesResult =
-  | { ok: true; assistantMessage: string; files: Array<{ path: string; content: string }> }
+  | { ok: true; assistantMessage: string; files: GeneratedFile[] }
   | { ok: false; reason: string };
 
 export type ChatCtxMsg = { role: "user" | "assistant"; text: string };
@@ -10,7 +12,7 @@ export type ChatCtxMsg = { role: "user" | "assistant"; text: string };
 type GenerateFilesArgs = {
   userMessage: string;
   context?: ChatCtxMsg[];
-  existingFiles?: Array<{ path: string; content: string }>;
+  existingFiles?: GeneratedFile[];
   // Source-of-truth build constraints persisted at project level (platform/framework/language/appName/etc)
   // This is injected into the builder prompt to prevent random scaffolds.
   buildInfo?: any;
@@ -39,9 +41,9 @@ function safeParseJSON<T>(raw: string): T | null {
   }
 }
 
-function normalizeFiles(files: any): Array<{ path: string; content: string }> {
+function normalizeFiles(files: any): GeneratedFile[] {
   if (!Array.isArray(files)) return [];
-  const out: Array<{ path: string; content: string }> = [];
+  const out: GeneratedFile[] = [];
 
   for (const f of files) {
     if (!f || typeof f !== "object") continue;
@@ -62,7 +64,7 @@ function normalizeFiles(files: any): Array<{ path: string; content: string }> {
   }
 
   // de-dupe by path (last one wins)
-  const byPath = new Map<string, { path: string; content: string }>();
+  const byPath = new Map<string, GeneratedFile>();
   for (const f of out) byPath.set(f.path, f);
   return Array.from(byPath.values());
 }
@@ -109,7 +111,10 @@ Build Info (source of truth; MUST obey):
 ${args.buildInfo ? JSON.stringify(args.buildInfo, null, 2) : "(not set yet)"}
 
 Existing project files (authoritative; may be empty):
-${existing.map((f) => `--- ${f.path} ---\n${f.content}`).join("\n\n").slice(0, 180000) || "(none)"}
+${existing
+  .map((f) => `--- ${f.path} ---\n${f.content}`)
+  .join("\n\n")
+  .slice(0, 180000) || "(none)"}
 
 Conversation context:
 ${ctx.map((m) => `${m.role.toUpperCase()}: ${m.text}`).join("\n").slice(0, 12000) || "(none)"}
