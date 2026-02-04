@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
 import net from "net";
-import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
 
 import { readMeta, writeMeta, type ProjectMeta } from "@/lib/sandbox/meta";
 
 export const runtime = "nodejs";
 
-const processes = new Map<string, ChildProcessWithoutNullStreams>();
+const processes = new Map<string, ChildProcess>();
 
 async function getFreePort(): Promise<number> {
   return await new Promise((resolve, reject) => {
@@ -61,7 +61,7 @@ function writePreviewMeta(projectId: string, patch: ProjectMeta["preview"]) {
 
   writeMeta(projectId, {
     ...existing,
-    id: projectId, // required by ProjectMeta
+    id: projectId,
     preview: {
       ...(existing.preview ?? {}),
       ...(patch ?? {}),
@@ -115,7 +115,6 @@ export async function GET(
 
   processes.set(projectId, child);
 
-  // ✅ FIX: writeMeta expects a full ProjectMeta (id is required), so merge + include id
   writePreviewMeta(projectId, {
     ...(existing.preview ?? {}),
     nextPort: port,
