@@ -1,9 +1,8 @@
-// app/preview/[id]/route.ts
 import { NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
-import { spawn } from "child_process";
 import net from "net";
+import { spawn } from "child_process";
 
 import { readMeta, writeMeta } from "@/lib/sandbox/meta";
 
@@ -39,7 +38,6 @@ async function waitForPort(port: number, timeoutMs = 8000) {
       s.on("error", () => resolve(false));
       s.setTimeout(800, () => resolve(false));
     });
-
     if (ok) return true;
     await new Promise((r) => setTimeout(r, 150));
   }
@@ -64,7 +62,6 @@ export async function GET(
 ) {
   const projectId = params.id;
 
-  // Ensure project exists
   const root = path.join(
     process.cwd(),
     "sandbox",
@@ -77,22 +74,22 @@ export async function GET(
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
-  // Reuse existing preview process if it exists and is alive
   const existing = readMeta(projectId);
   const running = processes.get(projectId);
 
   if (running && !running.killed) {
     const url = new URL(req.url);
-    return NextResponse.redirect(new URL(`/preview/${projectId}/next`, url), 307);
+    return NextResponse.redirect(
+      new URL(`/preview/${projectId}/next`, url),
+      307
+    );
   }
 
-  // If we had a previous process recorded but it's dead, clean it up
   if (running?.pid) {
     killProcessTree(running.pid);
     processes.delete(projectId);
   }
 
-  // Start a new Next server instance on a free port
   const port = await getFreePort();
 
   const child = spawn("npm", ["run", "dev", "--", "-p", String(port)], {
@@ -104,16 +101,14 @@ export async function GET(
 
   processes.set(projectId, child);
 
-  // ✅ IMPORTANT: avoid "meta is {}" typing issues by only writing the fields we need
   writeMeta(projectId, {
     preview: {
       ...(existing?.preview ?? {}),
       nextPort: port,
       nextStartedAt: Date.now(),
     },
-  } as any);
+  });
 
-  // Give the server a moment to start so the first iframe load doesn't race.
   await waitForPort(port);
 
   const url = new URL(req.url);
@@ -122,7 +117,10 @@ export async function GET(
     307
   );
 
-  // Used by middleware to route /_next/* and /api/* to the correct preview.
-  res.cookies.set("da_preview", projectId, { path: "/", sameSite: "lax" });
+  res.cookies.set("da_preview", projectId, {
+    path: "/",
+    sameSite: "lax",
+  });
+
   return res;
 }
