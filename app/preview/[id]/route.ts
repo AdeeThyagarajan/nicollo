@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
 import net from "net";
-import { spawn } from "child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
 
-import { readMeta, writeMeta } from "@/lib/sandbox/meta";
+import { readMeta, writeMeta, type ProjectMeta } from "@/lib/sandbox/meta";
 
 export const runtime = "nodejs";
 
-const processes = new Map<string, any>();
+const processes = new Map<string, ChildProcessWithoutNullStreams>();
 
 async function getFreePort(): Promise<number> {
   return await new Promise((resolve, reject) => {
@@ -56,6 +56,20 @@ function killProcessTree(pid: number) {
   }
 }
 
+function writePreviewMeta(projectId: string, patch: ProjectMeta["preview"]) {
+  const existing = (readMeta(projectId) ?? { id: projectId }) as ProjectMeta;
+
+  writeMeta(projectId, {
+    ...existing,
+    id: projectId, // required by ProjectMeta
+    preview: {
+      ...(existing.preview ?? {}),
+      ...(patch ?? {}),
+    },
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 export async function GET(
   req: Request,
   { params }: { params: { id: string } }
@@ -74,7 +88,7 @@ export async function GET(
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
-  const existing = readMeta(projectId);
+  const existing = (readMeta(projectId) ?? { id: projectId }) as ProjectMeta;
   const running = processes.get(projectId);
 
   if (running && !running.killed) {
@@ -101,12 +115,11 @@ export async function GET(
 
   processes.set(projectId, child);
 
-  writeMeta(projectId, {
-    preview: {
-      ...(existing?.preview ?? {}),
-      nextPort: port,
-      nextStartedAt: Date.now(),
-    },
+  // ✅ FIX: writeMeta expects a full ProjectMeta (id is required), so merge + include id
+  writePreviewMeta(projectId, {
+    ...(existing.preview ?? {}),
+    nextPort: port,
+    nextStartedAt: Date.now(),
   });
 
   await waitForPort(port);
