@@ -1,4 +1,4 @@
-// app/preview/[id]/next/[[...path]]/route.ts
+// devassist/app/preview/[id]/next/[[...path]]/route.ts
 export const runtime = "nodejs";
 
 /**
@@ -13,14 +13,6 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { readMeta } from "@/lib/sandbox/meta";
-
-type ProjectMeta = {
-  preview?: {
-    nextPort?: number;
-    [k: string]: unknown;
-  };
-  [k: string]: unknown;
-};
 
 function buildTarget(port: number, reqUrl: string, pathParts?: string[]) {
   const url = new URL(reqUrl);
@@ -78,11 +70,11 @@ async function proxy(
 ) {
   const projectId = params.id;
 
-  const meta = (readMeta(projectId) ?? {}) as ProjectMeta;
+  const meta = readMeta(projectId);
   const inferredPort = inferPortFromProjectId(projectId);
 
   // Respect meta if present, otherwise fall back to deterministic inferred port
-  const port = meta.preview?.nextPort ?? inferredPort;
+  const port = meta?.preview?.nextPort ?? inferredPort;
 
   const target = buildTarget(port, req.url, params.path);
 
@@ -115,10 +107,7 @@ async function proxy(
   headers.delete("transfer-encoding");
   headers.delete("content-length");
 
-  return new NextResponse(upstream.body, {
-    status: upstream.status,
-    headers,
-  });
+  return new NextResponse(upstream.body, { status: upstream.status, headers });
 }
 
 export async function GET(req: Request, ctx: any) {
