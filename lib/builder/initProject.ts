@@ -1,7 +1,10 @@
 import fs from "fs";
 import path from "path";
 import { ensureDirs, templateDir, currentDir } from "@/lib/sandbox/paths";
-import { readMeta as readProjectMeta, writeMeta as writeProjectMeta } from "@/lib/sandbox/meta";
+import {
+  readMeta as readProjectMeta,
+  writeMeta as writeProjectMeta,
+} from "@/lib/sandbox/meta";
 
 /**
  * V1 sandbox baseline: a simple static web app (index.html + asset/*).
@@ -18,7 +21,13 @@ export function ensureSandboxApp(projectId: string) {
   // Ensure meta exists
   const meta = readProjectMeta(projectId);
   if (!meta) {
-    writeProjectMeta(projectId, { initialized: true, built: false, version: 0 });
+    writeProjectMeta(projectId, {
+      id: projectId,
+      initialized: true,
+      built: false,
+      version: 0,
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   // Seed template once
