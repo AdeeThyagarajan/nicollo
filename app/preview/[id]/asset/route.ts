@@ -9,6 +9,17 @@ import { readMeta, writeMeta } from "@/lib/sandbox/meta";
 
 export const runtime = "nodejs";
 
+type PreviewMeta = {
+  nextPort?: number;
+  nextStartedAt?: number;
+  [key: string]: unknown;
+};
+
+type ProjectMeta = {
+  preview?: PreviewMeta;
+  [key: string]: unknown;
+};
+
 const processes = new Map<string, any>();
 
 async function getFreePort(): Promise<number> {
@@ -64,13 +75,19 @@ export async function GET(
   const projectId = params.id;
 
   // Ensure project exists
-  const root = path.join(process.cwd(), "sandbox", "projects", projectId, "current");
+  const root = path.join(
+    process.cwd(),
+    "sandbox",
+    "projects",
+    projectId,
+    "current"
+  );
   if (!fs.existsSync(root)) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
   // Reuse existing preview process if it exists and is alive
-  const existing = readMeta(projectId);
+  const existing = (readMeta(projectId) ?? {}) as ProjectMeta;
   const running = processes.get(projectId);
 
   if (running && !running.killed) {
@@ -98,11 +115,11 @@ export async function GET(
 
   writeMeta(projectId, {
     preview: {
-      ...(existing?.preview ?? {}),
+      ...(existing.preview ?? {}),
       nextPort: port,
       nextStartedAt: Date.now(),
     },
-  });
+  } satisfies ProjectMeta);
 
   // Give the server a moment to start so the first iframe load doesn't race.
   await waitForPort(port);
